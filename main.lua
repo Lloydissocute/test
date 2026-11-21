@@ -374,11 +374,13 @@ local AssetFiles = {
     GenderFB = "ROCONS_Gender_FB.png",
 }
 
+local RankConfig
+do
 local RankTitlesByUserId = {
     [LocalPlayer.UserId] = "Founder",
 }
 
-local RankConfig = {
+RankConfig = {
     Colors = {
         ["Founder"]       = Color3.fromRGB(185, 110, 255),
         ["Co Founder"]    = Color3.fromRGB(255, 95, 20),
@@ -395,6 +397,7 @@ local RankConfig = {
         return id and RankTitlesByUserId[id] or nil
     end,
 }
+end
 
 -- Enhanced High-Contrast Obsidian & Neon Amethyst Palette
 local Theme = {
@@ -562,6 +565,7 @@ function UI.Viewport()
     return (cam and cam.ViewportSize) or Vector2.new(1280, 720)
 end
 
+do
 local function sBar(x, y, w, h, r)
     return { x = x, y = y, w = w, h = h, r = r or 0, c = 0.5 }
 end
@@ -607,6 +611,7 @@ UI.Icons = {
     gender_female = { sRing(0.50, 0.36, 0.48, 0.48, 0.5, 0.12), { x = 0.50, y = 0.74, w = 0.12, h = 0.36, r = 0 }, { x = 0.50, y = 0.76, w = 0.36, h = 0.12, r = 0 } },
     gender_femboy = { sRing(0.46, 0.50, 0.42, 0.42, 0.5, 0.11), sBar(0.71, 0.25, 0.32, 0.11, -45), { x = 0.75, y = 0.13, w = 0.25, h = 0.11, r = 0 }, { x = 0.85, y = 0.23, w = 0.11, h = 0.25, r = 0 }, sBar(0.22, 0.74, 0.28, 0.11, -45), sBar(0.22, 0.74, 0.26, 0.11, 45) },
 }
+end
 
 function UI.Icon(parent, name, size, color, extraProps)
     color = color or Theme.TextPrimary
@@ -1255,6 +1260,8 @@ end
 -- 4. DELTA-COMPATIBLE HTTP FETCHER & DISK-CACHED ASSET PACK LOADER
 -- ============================================================================
 local getCustomAsset = getcustomasset or getsynasset
+local SafeHttpGet
+do
 local httpRequestFn = (type(request) == "function" and request)
     or (type(http_request) == "function" and http_request)
     or (type(http) == "table" and type(http.request) == "function" and http.request)
@@ -1262,7 +1269,7 @@ local httpRequestFn = (type(request) == "function" and request)
     or (type(fluxus) == "table" and type(fluxus.request) == "function" and fluxus.request)
     or nil
 
-local function SafeHttpGet(url)
+SafeHttpGet = function(url)
     local ok, res = pcall(function()
         return game:HttpGet(url, true)
     end)
@@ -1283,7 +1290,10 @@ local function SafeHttpGet(url)
     end
     return nil
 end
+end
 
+local GenderIconAssets = { M = "", F = "", FB = "" }
+do
 local B64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local function Base64Decode(b64)
     if type(crypt) == "table" and type(crypt.base64decode) == "function" then
@@ -1318,7 +1328,6 @@ local EmbeddedGenderPngB64 = {
     GenderFB = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAwFBMVEXjYOafX9nuYN7qYN7/AADwcbj/AH9/AP/gX+L/P7/MM/+qAP//v/9/f7///wB/P38A/wAAAADOZuy2afbjYuLOZuu2afb9ff3iYeL/AP/sYN2qVf/MafPMaPD////RaPaqVaroZOf9VfzrYN3OZ+/lZOfPafPsZep/f/+ya/y3avj/qv+5a/i5a/m+fv4AAP/oYuTnYuK/f7/Ncva/P79/f3//Vaq3afZ/AH//f3+qqv/MZsznX95VVf//P/+/P//a78CyAAAAQHRSTlMdBaNNAQQCAsIEBQMEBAEEAQC8vbzGxgPFAbwDTpQBFAM1BMdxUjEWAiEaA1qeBQFsjwQVBAIDZgICAwXGAwQE4i7mAgAABnZJREFUeNrtmwd3mzoUx0m63n7vKhZCZplNndQjsTOaju//raqBQOBty/ScV9+TkxpC+f/u0JVQiAU/2awLwAXgAvD/AqBEmjtaY275C0RgXNnHtTY+N4ALd/bNFvsUnxlgBE/2jb3ZbtyzA6gIrA2E/emnA8S/fATcn1CEv1YNsEb0UfagSdWQnuyeATrW7kt9AEzLygJK7llF9A7QWEBW+nKvAFNd3+4fgLqr+n0CtOJvf6o+9wfQ1r95+KgAbvsBYPn3NP2xorH9fgA6+R9D6fUKIOJva/pX0CtAwOOvAGz0AF/dcwFM18Z/JOQqxZsQSjgDQOBOJt9j111MJp21PpVqtmDg8f8MxgGo257VXZe24o+ZFMIi/mNwwTAALblamN/dPaVp+nTn5eP6rNJHzDAS+XflYt3D/JwBALrg6p6PbjC2MTcbId8LuQqV+Zf6LAKY+V+CDoDwqQDEBTf3ERdGysSBn4ewHPH8K31ko5Dn3ygA8yf3dXENwvcA7pWQIJD5NwngQugL9S6BOIf9vPafnwprfUMAAQUPrZOvEVBaBwez+vsbjAIEQMT9cS2oi4vvWIt/nX8FIA0dDUC4PurUHsbrCkL677bgQ09aHhwJEFDL13wUhe+zPuCLIbGiH4JreIOiLFNZaVIepV4YXvGWEI7zFDWpUfrdrRg6keYeCaCqiHvLvkTjgemSlGI6Cj1+sq4/P4Rbw1s0BPKq0rh+yuSDsqRCnFLCvH1IGwLsHai/G2BJQ4SrkYZRLrtuewKEvIkAy0BgFuAWUv3uV2S1RAjvUeqa9KAS3A1AGve4/mTtMuQKHnyVBZwfRrALoHTTWj+HeHOfrvLEyvC1k6STAPQAePB943WxqlRWp7nJPlDyCpCepcEf080XfqtLhVUBMZiCou722x0jQVhfGQI1BfC1iWy6JQHt0cJy8KcpgJG6KwsA/bBXtWDO+tUUAAG/uqm/s72Qqa/m/cBUDbBlQONVueeUcWARWNsDYDXtpdx3ztjn4j0BFuyeWC0ydsWVwsMxzXArwP1hUX1VAJ55AH8fAOKfEeBhDwB6RoC9UhAYB1jUi6E9AGg1Zk0CxGou5DMB2fnsEDajYGQGYNTMRd5OAKKHi5gBoG+JX3dCurMTpg2AqblAuymhdNfTi2rbPjybA/Ca9dD2vH5rOrF3yIrE2rewfLL1rjR+VYMQReYWJIxALXeZX1db1yN1APwQTC5K6xyggm6OAQ0Kv8lAbA6A1jkQi026GbRZvYeByUVpU4YIZ5tcm8baVelhT4e7AD4sQ9UMMQvukq7fH8+wlil6IgDptOOs2ZhIAT4vV7en+SYM2nO47gZ47qx9Jk0zYhVeMECdkB8Us9p91oQInAbwHBStYRzEMKv3B5hEFor9YhLQJRnFjJVkSN+fosFpAASyQaR5wYZekwK5I5hF+pOT5+v7Y9GhAegCLJg+v81Cry+EtAjwf+ZpFoVWEb2Z+c0WEa/SrP6PxwHQe1HOjSO0KUFtJ1Bt0LU26qT+v3ASQACZg6tQxrLAM2egFOpP3AZMe9DZn8sOjn8HgAr9wcAZYFYHpdRnx9wQHjjOYIvhQXSMvg7wDAXT5ir8O6sD4X9z/9kWAseZhYfnvxsBQqIWgabvDFgDiOYSQQNRJ+YRHLo/t7YIQRFwyaitPwrgMWMIzorzzjz7a8tEdcgwvAU9BrUW12dFOWJJimZcUWI4v4kPs6jgv64FIy+zEUEwqAg0/Xs5TNkuEWOYD4Xj7Edzrg5Hu7+mE75qWWj7XzVm8eBtxYVlWUUh/F7GAYC51/kmdQz0/LdfWqTrDwy9T8jrIFnvv74EY+9NBvRE8Q3rgXd6DL4wfQLQ5xuVdEEzbaAf2eCOBxD91xm0COIeAajef4X+F0bw0hsA+/1v1m51siv/3hMAn/+T4VAoD5NEmxdILwBy/pf6bCgOk2FSfTxfHVjd/FfyTLqwBs7QqevgbR8p4PGXloj5dyiPWSSGGQTnBghI9qXRj+H+myBIJMEc3tPzArxA1PL/Ed6+A0sRzC169ghQMqsIkuuq/99WWUjmBdA+aoATJML/d/X6QMSfnG0ctkbBIye4Tq7jZtDxFUpyTVhC+ugDL+/hTZIMC12OwJt5fMb5qJ2Cf1gMhp35n+X+Pwq9zQUvj1bXXTqifc6GsLrBQHtekABc/sznAnABuABcAC4AF4ALwAWgT/sBMbickXaBfxkAAAAASUVORK5CYII=",
 }
 
-local GenderIconAssets = { M = "", F = "", FB = "" }
 pcall(function()
     if writefile and getCustomAsset then
         for key, b64Key in pairs({ M = "GenderM", F = "GenderF", FB = "GenderFB" }) do
@@ -1337,6 +1346,7 @@ pcall(function()
         end
     end
 end)
+end
 
 -- Downloads a real PNG image from the internet and applies it to an ImageLabel
 local function BindWebImage(imgLabel, webUrl, cacheFileName, fallbackRbxAsset)
@@ -3029,25 +3039,25 @@ end
 -- ============================================================================
 local PlayersDatabase = {}
 local RemoteTracks = {}
-local SoundThreads = {}
-local ActiveSounds = {}
 
 local MyGender       = "M"
 local MyAge          = "18"
 local MyStatus       = "Idle"     -- "Idle" | "Synced" | "Emoting"
 local MySyncPartner  = ""         -- player Name or "[BOT]"
 local MyRole         = "D"        -- "D" | "S"
-local MyController   = LocalPlayer.Name
 local MyCurrentAnim  = ""
 local MyAnimSpeed    = 1
 local MyMorphed      = false
 local IgnoreInvites  = false
-local PendingInviteFrom = ""
-local PendingInviteGender = ""
 
 local MyAnimTrack, PartnerAnimTrack, EmoteAnimTrack
 
-local function StopAllSounds()
+local StopAllSounds, StartSyncSoundLoops
+do
+local SoundThreads = {}
+local ActiveSounds = {}
+
+StopAllSounds = function()
     for _, th in ipairs(SoundThreads) do
         pcall(task.cancel, th)
     end
@@ -3078,7 +3088,7 @@ local function PlayRandomSoundFrom(folder, parentPart)
     end
 end
 
-local function StartSyncSoundLoops(cycleDuration, char)
+StartSyncSoundLoops = function(cycleDuration, char)
     StopAllSounds()
     if not SoundsFolder or cycleDuration <= 0 or not char then return end
     local onFolder = SoundsFolder:FindFirstChild("On")
@@ -3106,6 +3116,7 @@ local function StartSyncSoundLoops(cycleDuration, char)
             end
         end))
     end
+end
 end
 
 local function RefreshOverheads(db)
@@ -3525,6 +3536,8 @@ if not ScreenGui.Parent then
 end
 
 -- Toast Notification Banner (Standard Frame for 100% Delta Mobile/PC Brightness)
+local ShowNotification
+do
 local NotifFrame = UI.New("Frame", {
     Name = "Toast",
     AnchorPoint = Vector2.new(0.5, 0),
@@ -3593,7 +3606,7 @@ local function GuessToastKind(msg)
     return "info"
 end
 
-local function ShowNotification(msg, duration, kind)
+ShowNotification = function(msg, duration, kind)
     ToastVer += 1
     local myVer = ToastVer
     NotifText.Text = tostring(msg or "")
@@ -3623,6 +3636,7 @@ local function ShowNotification(msg, duration, kind)
         end)
     end)
 end
+end
 
 -- Floating Left Dock (Draggable Quick Toggle + Chat Pill) — hidden until gender is selected
 local Dock = UI.New("Frame", {
@@ -3638,6 +3652,7 @@ local Dock = UI.New("Frame", {
     Parent = ScreenGui,
 })
 UI.Corner(Dock, 18)
+do
 local dockStroke = UI.Stroke(Dock, Color3.new(1, 1, 1), 1.4, 0.08)
 UI.Gradient(dockStroke, Theme.AccentBright, Theme.AccentDeep, 90)
 UI.Pad(Dock, 6, 4, 6, 8)
@@ -3657,6 +3672,7 @@ UI.Icon(DockGrip, "grip", 17, Theme.TextDarkened, {
     Position = UDim2.fromScale(0.5, 0.5),
 })
 UI.MakeDraggable(DockGrip, Dock)
+end
 
 local function MakeDockButton(name, iconName, labelText, order)
     local btn = UI.New("TextButton", {
@@ -3719,6 +3735,7 @@ local MainFrame = UI.New("Frame", {
 })
 MainFrame:SetAttribute("IsOpen", false)
 UI.Corner(MainFrame, 20)
+do
 local mainStroke = UI.Stroke(MainFrame, Color3.new(1, 1, 1), 1.6, 0.05)
 UI.Gradient(mainStroke, Theme.AccentBright, Theme.AccentDeep, 90)
 UI.AttachAutoScale(MainFrame, 500)
@@ -3730,6 +3747,7 @@ local TopGlowBar = UI.New("Frame", {
     Parent = MainFrame,
 })
 UI.Gradient(TopGlowBar, Theme.AccentBright, Theme.Accent, 0)
+end
 
 -- Header Bar
 local Header = UI.New("Frame", {
@@ -3741,6 +3759,8 @@ local Header = UI.New("Frame", {
 })
 UI.MakeDraggable(Header, MainFrame)
 
+local HeaderTitleBox
+do
 local LogoBadge = UI.New("Frame", {
     AnchorPoint = Vector2.new(0, 0.5),
     Position = UDim2.new(0, 14, 0.5, 0),
@@ -3761,7 +3781,7 @@ local HeaderLogoImg = UI.New("ImageLabel", {
 UI.Corner(HeaderLogoImg, 9)
 BindWebImage(HeaderLogoImg, AssetUrls.Logo, AssetFiles.Logo, LogoAssetId)
 
-local HeaderTitleBox = UI.New("Frame", {
+HeaderTitleBox = UI.New("Frame", {
     Position = UDim2.fromOffset(58, 9),
     Size = UDim2.new(1, -225, 0, 40),
     BackgroundTransparency = 1,
@@ -3775,6 +3795,7 @@ local HeaderTitle = UI.New("TextLabel", {
     Size = UDim2.new(1, 0, 0, 20),
     Parent = HeaderTitleBox,
 })
+end
 local HeaderSub = UI.New("TextLabel", {
     Text = IsUniversalMode and "v2.5 · โหมดเล่นได้ทุกแมพ" or "v2.5 · เชื่อมต่อเซิร์ฟเวอร์",
     Face = "SemiBold",
@@ -3862,14 +3883,6 @@ UI.Icon(CloseBtn, "close", 15, Theme.TextSecondary, {
     Position = UDim2.fromScale(0.5, 0.5),
 })
 
-local HeaderLine = UI.New("Frame", {
-    Position = UDim2.new(0, 12, 0, 58),
-    Size = UDim2.new(1, -24, 0, 1),
-    BackgroundColor3 = Theme.Border,
-    BackgroundTransparency = 0.45,
-    Parent = MainFrame,
-})
-
 -- 5-Tab Navigation Bar
 local NavContainer = UI.New("Frame", {
     Name = "Nav",
@@ -3879,6 +3892,16 @@ local NavContainer = UI.New("Frame", {
     Parent = MainFrame,
 })
 UI.List(NavContainer, "H", 5, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+
+local SpeedFill, SpeedLabel
+do
+local HeaderLine = UI.New("Frame", {
+    Position = UDim2.new(0, 12, 0, 58),
+    Size = UDim2.new(1, -24, 0, 1),
+    BackgroundColor3 = Theme.Border,
+    BackgroundTransparency = 0.45,
+    Parent = MainFrame,
+})
 
 -- Speed & Control Bar
 local ControlPanel = UI.New("Frame", {
@@ -3935,14 +3958,14 @@ local SpeedTrack = UI.New("Frame", {
     Parent = SpeedGroup,
 })
 UI.Corner(SpeedTrack, UDim.new(0.5, 0))
-local SpeedFill = UI.New("Frame", {
+SpeedFill = UI.New("Frame", {
     Size = UDim2.fromScale(0.3, 1),
     BackgroundColor3 = Theme.AccentBright,
     Parent = SpeedTrack,
 })
 UI.Corner(SpeedFill, UDim.new(0.5, 0))
 
-local SpeedLabel = UI.New("TextLabel", {
+SpeedLabel = UI.New("TextLabel", {
     Text = "ความเร็วท่า · 1.0x",
     Face = "Bold",
     TextSize = 12,
@@ -3953,23 +3976,9 @@ local SpeedLabel = UI.New("TextLabel", {
     Parent = SpeedGroup,
 })
 
-local function UpdateSpeed(delta)
-    MyAnimSpeed = math.clamp(math.floor((MyAnimSpeed + delta) * 10 + 0.5) / 10, 0.2, 3.0)
-    SpeedLabel.Text = string.format("ความเร็วท่า · %.1fx", MyAnimSpeed)
-    local ratio = math.clamp((MyAnimSpeed - 0.2) / 2.8, 0.05, 1)
-    UI.Tween(SpeedFill, 0.14, { Size = UDim2.fromScale(ratio, 1) })
-    if MyAnimTrack then MyAnimTrack.Speed = MyAnimSpeed end
-    if PartnerAnimTrack then PartnerAnimTrack.Speed = MyAnimSpeed end
-    if EmoteAnimTrack then EmoteAnimTrack.Speed = MyAnimSpeed end
-    if MyStatus == "Synced" then
-        SpeedChangeSig:Fire(MyAnimSpeed)
-    end
-    PlayerUpdateSig:Fire({ AnimSpeed = MyAnimSpeed })
-    if BroadcastMyP2PState then BroadcastMyP2PState() end
+SpeedDown.MouseButton1Click:Connect(function() MyAnimSpeed = math.clamp(math.floor((MyAnimSpeed - 0.2) * 10 + 0.5) / 10, 0.2, 3.0); SpeedLabel.Text = string.format("ความเร็วท่า · %.1fx", MyAnimSpeed); UI.Tween(SpeedFill, 0.14, { Size = UDim2.fromScale(math.clamp((MyAnimSpeed - 0.2) / 2.8, 0.05, 1), 1) }); if MyAnimTrack then MyAnimTrack.Speed = MyAnimSpeed end; if PartnerAnimTrack then PartnerAnimTrack.Speed = MyAnimSpeed end; if EmoteAnimTrack then EmoteAnimTrack.Speed = MyAnimSpeed end; if MyStatus == "Synced" then SpeedChangeSig:Fire(MyAnimSpeed) end; PlayerUpdateSig:Fire({ AnimSpeed = MyAnimSpeed }); if BroadcastMyP2PState then BroadcastMyP2PState() end end)
+SpeedUp.MouseButton1Click:Connect(function() MyAnimSpeed = math.clamp(math.floor((MyAnimSpeed + 0.2) * 10 + 0.5) / 10, 0.2, 3.0); SpeedLabel.Text = string.format("ความเร็วท่า · %.1fx", MyAnimSpeed); UI.Tween(SpeedFill, 0.14, { Size = UDim2.fromScale(math.clamp((MyAnimSpeed - 0.2) / 2.8, 0.05, 1), 1) }); if MyAnimTrack then MyAnimTrack.Speed = MyAnimSpeed end; if PartnerAnimTrack then PartnerAnimTrack.Speed = MyAnimSpeed end; if EmoteAnimTrack then EmoteAnimTrack.Speed = MyAnimSpeed end; if MyStatus == "Synced" then SpeedChangeSig:Fire(MyAnimSpeed) end; PlayerUpdateSig:Fire({ AnimSpeed = MyAnimSpeed }); if BroadcastMyP2PState then BroadcastMyP2PState() end end)
 end
-
-SpeedDown.MouseButton1Click:Connect(function() UpdateSpeed(-0.2) end)
-SpeedUp.MouseButton1Click:Connect(function() UpdateSpeed(0.2) end)
 
 UpdateHeaderStatusBadge = function()
     local modeStr = IsUniversalMode and "โหมดทุกแมพ" or "เซิร์ฟเวอร์"
@@ -4134,6 +4143,11 @@ RefreshListBtn.MouseButton1Click:Connect(function()
 end)
 
 -- [B] แท็บบอท (Bots Tab)
+local SelectedBotMorph = "F"
+local BotMorphSeg
+local SelectedBotRole = "S"
+local BotRoleSeg
+do
 local botOrder = 0
 local function nextBotOrder() botOrder += 1; return botOrder end
 
@@ -4146,8 +4160,6 @@ local BotUserBox = UI.Field(BotsTab, {
 })
 
 UI.Section(BotsTab, "เพศและรูปร่างของบอท", nextBotOrder())
-local SelectedBotMorph = "F"
-local BotMorphSeg
 BotMorphSeg = UI.Segmented(BotsTab, {
     { Key = "F",  Text = "ผู้หญิง" },
     { Key = "M",  Text = "ผู้ชาย" },
@@ -4157,8 +4169,6 @@ BotMorphSeg = UI.Segmented(BotsTab, {
 end, nextBotOrder())
 
 UI.Section(BotsTab, "บทบาทท่าซิงค์ของบอท", nextBotOrder())
-local SelectedBotRole = "S"
-local BotRoleSeg
 BotRoleSeg = UI.Segmented(BotsTab, {
     { Key = "S", Text = "ฝ่ายรับ (S)" },
     { Key = "D", Text = "ฝ่ายรุก (D)" },
@@ -4254,6 +4264,7 @@ DeleteBotBtn.MouseButton1Click:Connect(function()
     UpdateHeaderStatusBadge()
     ShowNotification("ลบบอทเรียบร้อยแล้ว", 2, "info")
 end)
+end
 
 -- [C] แท็บท่าซิงค์ (Anims Tab)
 local AnimSearchBox = UI.Field(AnimsTab, {
@@ -4263,6 +4274,7 @@ local AnimSearchBox = UI.Field(AnimsTab, {
     LayoutOrder = -5,
 })
 
+do
 local StopSyncBtn = UI.Button(AnimsTab, {
     Name = "StopSyncBtn",
     Text = "หยุดซิงค์ / รีเซ็ตท่าทาง",
@@ -4278,6 +4290,7 @@ StopSyncBtn.MouseButton1Click:Connect(function()
         ShowNotification("คุณยังไม่ได้ซิงค์กับใคร", 2, "warn")
     end
 end)
+end
 
 UI.Caption(AnimsTab, "ซิงค์กับผู้เล่นหรือบอทก่อน จากนั้นแตะเลือกท่าซิงค์ด้านล่างได้เลย", -3)
 
@@ -4332,6 +4345,7 @@ local EmoteSearchBox = UI.Field(EmotesTab, {
     LayoutOrder = -5,
 })
 
+do
 local StopEmoteBtn = UI.Button(EmotesTab, {
     Name = "StopEmoteBtn",
     Text = "หยุดแสดงท่าทาง",
@@ -4346,6 +4360,7 @@ StopEmoteBtn.MouseButton1Click:Connect(function()
         ShowNotification("หยุดแสดงท่าทางแล้ว", 2, "info")
     end
 end)
+end
 
 local EmoteRowButtons = {}
 local function PopulateEmotesTab()
@@ -4658,6 +4673,7 @@ PopulateSettingsTab()
 -- ============================================================================
 -- 10.5 PRE-MAIN-FEATURE GENDER SELECTION MODAL (เลือกเพศ: ผู้ชาย / ผู้หญิง / เฟมบอย + รูปจริงจากอินเทอร์เน็ต)
 -- ============================================================================
+do
 local ModalScrim = UI.New("Frame", {
     Name = "ROCONS_GenderModalScrim",
     Size = UDim2.fromScale(1, 1),
@@ -4908,10 +4924,12 @@ UI.New("TextLabel", {
     Size = UDim2.new(1, -36, 0, 16),
     Parent = GenderSelectModal,
 })
+end
 
 -- ============================================================================
 -- 11. STANDALONE MULTI-CHANNEL CHAT WINDOW (หน้าต่างแชทภาษาไทย — DELTA COMPATIBLE)
 -- ============================================================================
+do
 local ChatBoxFrame = UI.New("Frame", {
     Name = "ROCONS_StandaloneChatBox",
     AnchorPoint = Vector2.new(0.5, 0.5),
@@ -5106,6 +5124,7 @@ ChatToggleBtn.MouseButton1Click:Connect(function() ToggleChat() end)
 ChatCloseBtn.MouseButton1Click:Connect(function() ToggleChat(false) end)
 ToggleBtn.MouseButton1Click:Connect(function() ToggleMain() end)
 CloseBtn.MouseButton1Click:Connect(function() ToggleMain(false) end)
+end
 
 -- ============================================================================
 -- 12. SCRIPT-USER ONLY REPLICATOR (RTR_Net + UNIVERSAL P2P ANIMATOR CARRIER)
