@@ -224,14 +224,14 @@ local function BuildUniversalNet()
             getSig("StateChanged"):_EmitLocal(LocalPlayer.Name, me)
         end)
 
-        getSig("SyncRequest"):Connect(function(targetName, myGender)
+        getSig("SyncRequest"):Connect(function(targetName, myGender, requestedRole)
             -- In Universal Mode, auto-accept sync requests with any player in the server
             targetName = tostring(targetName or "")
             local targetPlr = Players:FindFirstChild(targetName)
             if not targetPlr then return end
             local me = ensurePlayerEntry(LocalPlayer)
             local them = ensurePlayerEntry(targetPlr)
-            local myRole = (myGender == "F") and "S" or "D"
+            local myRole = (requestedRole == "D" or requestedRole == "S") and requestedRole or ((myGender == "F") and "S" or "D")
             local theirRole = (myRole == "S") and "D" or "S"
 
             me.Status = "Synced"
@@ -3073,7 +3073,7 @@ local MyCurrentAnim  = ""
 local MyAnimSpeed    = 1
 local MyMorphed      = false
 local IgnoreInvites  = false
-local SyncGuards     = { BreakAt = {}, AnimChangeAt = 0 }
+local SyncGuards     = { BreakAt = {}, AnimChangeAt = 0, StartedAt = 0, PartnerConfirmed = {} }
 
 local function ResolveMyRole(partnerGender)
     if PreferredRole == "D" or PreferredRole == "S" then
@@ -3332,6 +3332,8 @@ local function StartSyncSession(partnerName, myRole)
     MyStatus = "Synced"
     MySyncPartner = partnerName
     MyRole = myRole
+    SyncGuards.StartedAt = os.clock()
+    SyncGuards.PartnerConfirmed = {}
     SyncMasterCFrame = nil
     SyncAnchorReady = false
 
@@ -4216,7 +4218,7 @@ local function PopulatePlayersTab(db)
                 end
                 local myRole = ResolveMyRole(info.Gender)
                 SyncGuards.BreakAt[plrName] = nil
-                SyncRequestSig:Fire(plrName, MyGender)
+                SyncRequestSig:Fire(plrName, MyGender, myRole)
                 StartSyncSession(plrName, myRole)
                 UpdateHeaderStatusBadge()
                 ShowNotification("ซิงค์และล็อกตัวละครกับ " .. disp .. " (" .. (myRole == "D" and "รุก" or "รับ") .. ") สำเร็จ!", 3, "success")
@@ -5439,6 +5441,10 @@ local function ReconcilePlayerState(key, payload)
             or (payload.Status == "Synced" and payload.SyncPartner == LocalPlayer.Name)
         )
 
+        if payload.Status == "Synced" and payload.SyncPartner == LocalPlayer.Name then
+            SyncGuards.PartnerConfirmed[key] = true
+        end
+
         if wantsSyncWithMe and not IgnoreInvites then
             local theirRole = (payload.Role == "S") and "S" or "D"
             local myOppositeRole = (theirRole == "D") and "S" or "D"
@@ -5452,10 +5458,12 @@ local function ReconcilePlayerState(key, payload)
                 ShowNotification("ซิงค์และล็อกตัวละครกับ " .. disp .. " แล้ว!", 3, "success")
             end
         elseif MyStatus == "Synced" and MySyncPartner == key and payload.Status == "Idle" and payload.SyncPartner == "" then
-            -- Partner broke sync
-            BreakSyncSession(true)
-            ShowNotification("คู่ซิงค์ของคุณหยุดการซิงค์แล้ว", 2, "info")
-            return
+            -- Only break if this partner actually synced with us first and then broke it
+            if SyncGuards.PartnerConfirmed[key] then
+                BreakSyncSession(true)
+                ShowNotification("คู่ซิงค์ของคุณหยุดการซิงค์แล้ว", 2, "info")
+                return
+            end
         end
 
         -- 2. Apply or remove remote script user's Morph (only visible to us because we run the script!)
