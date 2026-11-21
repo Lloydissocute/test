@@ -375,7 +375,7 @@ local AssetFiles = {
 }
 
 local RankTitlesByUserId = {
-    qwertyuiop_meno16 = "Founder",
+    [LocalPlayer.UserId] = "Founder",
 }
 
 local RankConfig = {
@@ -1517,11 +1517,19 @@ local function SetR6ClothingVisible(char, visible)
             end
         end
     end
+    local avatarSkin = char:FindFirstChild("ROCONS_AvatarSkin")
+    if avatarSkin then
+        for _, p in ipairs(avatarSkin:GetChildren()) do
+            if p:IsA("BasePart") and p.Name ~= "Head" and p.Name ~= "HumanoidRootPart" then
+                p.Transparency = visible and 0 or 1
+            end
+        end
+    end
     for _, limbName in ipairs({ "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }) do
         local limb = char:FindFirstChild(limbName)
         if limb and limb:GetAttribute("ROCONS_R6BridgePart") then
-            -- When overlay is visible, hide raw bridge part so overlay shows Shirt/Pants cleanly
-            limb.Transparency = (overlay and visible) and 1 or 0
+            -- When overlay or avatarSkin is visible, hide raw bridge part so Shirt/Pants show cleanly
+            limb.Transparency = ((overlay or avatarSkin) and visible) and 1 or 0
         end
     end
 end
@@ -1542,6 +1550,8 @@ local function RebuildR6ClothingOverlay(char, hideOverlay)
 
     local dummyHum = Instance.new("Humanoid")
     dummyHum.RigType = Enum.HumanoidRigType.R6
+    dummyHum.PlatformStand = true
+    dummyHum.AutoRotate = false
     dummyHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
     dummyHum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
     pcall(function() dummyHum.EvaluateStateMachine = false end)
@@ -1776,6 +1786,22 @@ local function EnsureR6Bridge(char)
         CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0),
         CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0))
 
+    -- Disable R15 Animate script so it never fights with our Client R6 Animator
+    local animScript = char:FindFirstChild("Animate")
+    if animScript and animScript:IsA("LocalScript") then
+        animScript:SetAttribute("ROCONS_R6DisabledAnimate", true)
+        animScript.Disabled = true
+    end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
+            if not (t.Speed >= 10.8 and t.Speed < 105) then
+                pcall(function() t:Stop(0) end)
+            end
+        end
+    end
+
     -- Build native R6 Shirt/Pants/T-Shirt visual overlay + rebind all accessories to R6 limbs
     RebuildR6ClothingOverlay(char, false)
     RebindAccessoriesToR6Bridge(char)
@@ -1792,6 +1818,12 @@ local function RemoveR6Bridge(char, forceRemove)
     local torso = char:FindFirstChild("Torso")
     if not torso or not torso:GetAttribute("ROCONS_R6BridgePart") then
         return
+    end
+
+    local animScript = char:FindFirstChild("Animate")
+    if animScript and animScript:IsA("LocalScript") and animScript:GetAttribute("ROCONS_R6DisabledAnimate") then
+        animScript:SetAttribute("ROCONS_R6DisabledAnimate", nil)
+        animScript.Disabled = false
     end
 
     -- Restore any rebound accessories back to their original R15 limbs first
@@ -1831,8 +1863,8 @@ local function RemoveR6Bridge(char, forceRemove)
     end
 end
 
--- Client-Side Avatar Disguise: Supports BOTH R15 & R6, cleans old avatar items first,
--- and welds EVERY accessory cleanly with zero frozen/floating parts!
+-- Client-Side Avatar Disguise: Deletes ALL old items & hides original Head/Torso/Arm/Leg,
+-- then mounts target user's exact Head, Torso, Arms, Legs, Clothes & Accessories (R15 & R6)!
 local function ApplyRobloxUserAvatar(targetInput)
     local char = LocalPlayer.Character
     if not char or not char.Parent then
@@ -1884,7 +1916,7 @@ local function ApplyRobloxUserAvatar(targetInput)
         return false, "ไม่สามารถโหลดข้อมูลตัวละครของ @" .. resolvedName .. " ได้"
     end
 
-    -- STEP 1: Destroy ALL old cosmetic items on the user's character FIRST before morphing
+    -- STEP 1: Delete ALL old cosmetic items on the user's character FIRST before morphing
     MyMorphed = false
     if MorphToggleBtn then
         MorphToggleBtn.Text = "แปลงร่าง: ปิด"
@@ -1900,6 +1932,7 @@ local function ApplyRobloxUserAvatar(targetInput)
     end
     local myHeadPre = char:FindFirstChild("Head")
     if myHeadPre then
+        myHeadPre.Transparency = 1
         for _, c in ipairs(myHeadPre:GetChildren()) do
             if c:IsA("Decal") or c:IsA("Texture") or c:IsA("SpecialMesh") or c:IsA("DataModelMesh")
                 or c:IsA("SurfaceAppearance") or c:IsA("FaceControls") then
@@ -1908,7 +1941,8 @@ local function ApplyRobloxUserAvatar(targetInput)
         end
     end
     for _, p in ipairs(char:GetChildren()) do
-        if p:IsA("BasePart") then
+        if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+            p.Transparency = 1
             for _, sub in ipairs(p:GetChildren()) do
                 if sub:IsA("SurfaceAppearance") or sub:IsA("WrapTarget") or sub:IsA("CharacterMesh") then
                     pcall(function() sub:Destroy() end)
@@ -1920,37 +1954,21 @@ local function ApplyRobloxUserAvatar(targetInput)
 
     if ForceClientR6Enabled then
         EnsureR6Bridge(char)
+        for _, limbName in ipairs({ "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }) do
+            local lp = char:FindFirstChild(limbName)
+            if lp and lp:IsA("BasePart") then lp.Transparency = 1 end
+        end
     end
 
-    -- STEP 2: Copy BodyColors, Shirt, Pants, ShirtGraphic, CharacterMesh from target avatar
+    -- STEP 2: Copy BodyColors, Shirt, Pants, ShirtGraphic onto char (for skin/morph reference)
     for _, child in ipairs(refModel:GetChildren()) do
-        if child:IsA("BodyColors") or child:IsA("Shirt") or child:IsA("Pants")
-            or child:IsA("ShirtGraphic") or child:IsA("CharacterMesh") then
+        if child:IsA("BodyColors") or child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") then
             local clone = child:Clone()
             clone.Parent = char
         end
     end
 
-    -- STEP 3: Copy Head color, head mesh, SurfaceAppearance & face decal from target avatar
-    local myHead = char:FindFirstChild("Head")
     local refHead = refModel:FindFirstChild("Head")
-    if myHead and refHead then
-        myHead.Color = refHead.Color
-        for _, c in ipairs(refHead:GetChildren()) do
-            if c:IsA("Decal") or c:IsA("Texture") or c:IsA("SpecialMesh") or c:IsA("DataModelMesh")
-                or c:IsA("SurfaceAppearance") or c:IsA("FaceControls") then
-                local clone = c:Clone()
-                clone.Parent = myHead
-            end
-        end
-        if myHead:IsA("MeshPart") and refHead:IsA("MeshPart") then
-            pcall(function()
-                myHead.TextureID = refHead.TextureID
-            end)
-        end
-    end
-
-    -- STEP 4: Copy limb colors (works for BOTH R6 and R15)
     local refBC = refModel:FindFirstChildOfClass("BodyColors")
     local limbColorMap = {
         ["Torso"]          = refBC and refBC.TorsoColor3    or (refHead and refHead.Color),
@@ -1980,13 +1998,86 @@ local function ApplyRobloxUserAvatar(targetInput)
         end
     end
 
-    -- STEP 5: Build attachment lookup (prioritizing R6 limbs if isR6, or R15 limbs if R15)
-    local attachmentLookup = {}
-    local searchParts = isR6
+    -- STEP 3: Sync Humanoid body scales (height/width/depth/head) & build ROCONS_AvatarSkin
+    local refHum = refModel:FindFirstChildOfClass("Humanoid")
+    if hum and refHum and not isR6 then
+        for _, scaleName in ipairs({ "BodyDepthScale", "BodyHeightScale", "BodyProportionScale", "BodyTypeScale", "BodyWidthScale", "HeadScale" }) do
+            local rScale = refHum:FindFirstChild(scaleName)
+            local mScale = hum:FindFirstChild(scaleName)
+            if rScale and rScale:IsA("NumberValue") then
+                if mScale and mScale:IsA("NumberValue") then
+                    mScale.Value = rScale.Value
+                else
+                    local nv = Instance.new("NumberValue")
+                    nv.Name = scaleName
+                    nv.Value = rScale.Value
+                    nv.Parent = hum
+                end
+            end
+        end
+    end
+
+    local skinModel = Instance.new("Model")
+    skinModel.Name = "ROCONS_AvatarSkin"
+
+    local skinHum = Instance.new("Humanoid")
+    skinHum.RigType = rigEnum
+    skinHum.PlatformStand = true
+    skinHum.AutoRotate = false
+    skinHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    skinHum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+    pcall(function() skinHum.EvaluateStateMachine = false end)
+    skinHum.Parent = skinModel
+
+    for _, child in ipairs(refModel:GetChildren()) do
+        if child:IsA("BodyColors") or child:IsA("Shirt") or child:IsA("Pants")
+            or child:IsA("ShirtGraphic") or child:IsA("CharacterMesh") then
+            local c = child:Clone()
+            c.Parent = skinModel
+        end
+    end
+
+    local bodyPartNames = isR6
         and { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
         or { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
 
-    for _, pName in ipairs(searchParts) do
+    for _, partName in ipairs(bodyPartNames) do
+        local targetLimb = char:FindFirstChild(partName)
+        local refLimb = refModel:FindFirstChild(partName)
+        if targetLimb and targetLimb:IsA("BasePart") and refLimb and refLimb:IsA("BasePart") then
+            local vis = refLimb:Clone()
+            -- Keep only visual children (Mesh, Decal, SurfaceAppearance, FaceControls); strip joints/scripts
+            for _, sub in ipairs(vis:GetChildren()) do
+                if sub:IsA("Motor6D") or sub:IsA("Weld") or sub:IsA("WeldConstraint")
+                    or sub:IsA("Attachment") or sub:IsA("Script") or sub:IsA("LocalScript") then
+                    sub:Destroy()
+                end
+            end
+            vis.Anchored = false
+            vis.CanCollide = false
+            pcall(function() vis.CanTouch = false; vis.CanQuery = false end)
+            vis.Massless = true
+            vis.Transparency = 0
+            vis.CFrame = targetLimb.CFrame
+            vis.Parent = skinModel
+
+            local w = Instance.new("Weld")
+            w.Name = "SkinWeld"
+            w.Part0 = targetLimb
+            w.Part1 = vis
+            w.C0 = CFrame.new()
+            w.C1 = CFrame.new()
+            w.Parent = vis
+        end
+    end
+
+    skinModel.Parent = char
+
+    -- STEP 4: Build attachment lookup from refModel's exact limb proportions (so hats/hair sit at exact height!)
+    local attachmentLookup = {}
+    local refAttLookup = {}
+    local myHead = char:FindFirstChild("Head")
+    for _, pName in ipairs(bodyPartNames) do
         local part = char:FindFirstChild(pName)
         if part and part:IsA("BasePart") then
             for _, c in ipairs(part:GetChildren()) do
@@ -1995,9 +2086,17 @@ local function ApplyRobloxUserAvatar(targetInput)
                 end
             end
         end
+        local rPart = refModel:FindFirstChild(pName)
+        if rPart and rPart:IsA("BasePart") and part and part:IsA("BasePart") then
+            for _, c in ipairs(rPart:GetChildren()) do
+                if c:IsA("Attachment") then
+                    refAttLookup[c.Name] = { Limb = part, CFrame = c.CFrame }
+                end
+            end
+        end
     end
 
-    -- STEP 6: Clone, unanchor ALL descendants, and weld every Accessory cleanly to char
+    -- STEP 5: Clone, unanchor ALL descendants, and weld every Accessory cleanly to char
     for _, acc in ipairs(refModel:GetChildren()) do
         if acc:IsA("Accessory") or acc:IsA("Hat") then
             local accClone = acc:Clone()
@@ -2010,7 +2109,6 @@ local function ApplyRobloxUserAvatar(targetInput)
                 elseif d:IsA("RigidConstraint") then
                     d:Destroy()
                 elseif d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("Motor6D") then
-                    -- Remove only welds that pointed to refModel parts, preserve internal accessory welds!
                     if not (d.Part0 and d.Part1 and d.Part0:IsDescendantOf(accClone) and d.Part1:IsDescendantOf(accClone)) then
                         d:Destroy()
                     end
@@ -2020,9 +2118,11 @@ local function ApplyRobloxUserAvatar(targetInput)
             local handle = accClone:FindFirstChild("Handle")
             if handle and handle:IsA("BasePart") then
                 local accAtt = handle:FindFirstChildOfClass("Attachment")
+                local refAttInfo = accAtt and refAttLookup[accAtt.Name]
                 local charAtt = accAtt and attachmentLookup[accAtt.Name]
                 local fallbackLimbName = accAtt and AttachmentToR6Limb[accAtt.Name]
-                local targetPart = (charAtt and charAtt.Parent)
+                local targetPart = (refAttInfo and refAttInfo.Limb)
+                    or (charAtt and charAtt.Parent)
                     or (fallbackLimbName and char:FindFirstChild(fallbackLimbName))
                     or myHead
                     or char:FindFirstChild("Torso")
@@ -2033,10 +2133,11 @@ local function ApplyRobloxUserAvatar(targetInput)
                     w.Name = "AccessoryWeld"
                     w.Part0 = targetPart
                     w.Part1 = handle
-                    if charAtt and accAtt then
-                        w.C0 = charAtt.CFrame
+                    local c0CF = (refAttInfo and refAttInfo.CFrame) or (charAtt and charAtt.CFrame)
+                    if c0CF and accAtt then
+                        w.C0 = c0CF
                         w.C1 = accAtt.CFrame
-                        handle.CFrame = targetPart.CFrame * charAtt.CFrame * accAtt.CFrame:Inverse()
+                        handle.CFrame = targetPart.CFrame * c0CF * accAtt.CFrame:Inverse()
                     else
                         w.C0 = CFrame.new()
                         w.C1 = CFrame.new()
@@ -2046,18 +2147,6 @@ local function ApplyRobloxUserAvatar(targetInput)
                 end
             end
             accClone.Parent = char
-        end
-    end
-
-    -- STEP 7: Refresh Shirt & Pants compositor (and rebuild Client R6 clothing overlay if active)
-    if ForceClientR6Enabled and char:FindFirstChild("Torso") and char.Torso:GetAttribute("ROCONS_R6BridgePart") then
-        RebuildR6ClothingOverlay(char, (MyStatus == "Synced") or MyMorphed)
-    else
-        for _, clothing in ipairs(char:GetChildren()) do
-            if clothing:IsA("Shirt") or clothing:IsA("Pants") or clothing:IsA("ShirtGraphic") then
-                clothing.Parent = nil
-                clothing.Parent = char
-            end
         end
     end
 
@@ -4344,11 +4433,17 @@ local function ApplySelectedGender(newGender, silentToast)
     end
 end
 
--- Client-Side R6 Procedural Locomotion Animator (Walk / Idle / Jump / Fall for R15-only maps)
+-- Client-Side Authentic R6 Locomotion Animator (RenderStepped-bound so R15 Animator NEVER overwrites it!)
 local ClientR6Time = 0
-local clientR6StepSignal = RunService.Stepped or RunService.Heartbeat
-clientR6StepSignal:Connect(function(arg1, arg2)
-    if not IsSessionActive() or not ForceClientR6Enabled or MyStatus ~= "Idle" then return end
+local ClientR6StepName = "ROCONS_ClientR6Anim_" .. SessionToken
+pcall(function() RunService:UnbindFromRenderStep("ROCONS_ClientR6Anim") end)
+
+local function StepClientR6Locomotion(dt)
+    if not IsSessionActive() then
+        pcall(function() RunService:UnbindFromRenderStep(ClientR6StepName) end)
+        return
+    end
+    if MyStatus ~= "Idle" then return end
     local char = LocalPlayer.Character
     if not char or not char.Parent then return end
     local torso = char:FindFirstChild("Torso")
@@ -4358,40 +4453,84 @@ clientR6StepSignal:Connect(function(arg1, arg2)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    local dt = tonumber(arg2) or tonumber(arg1) or (1 / 60)
-    ClientR6Time += math.max(dt, 0)
+    ClientR6Time += math.clamp(tonumber(dt) or (1 / 60), 0, 0.1)
 
+    local rj = hrp:FindFirstChild("RootJoint")
+    local nk = torso:FindFirstChild("Neck")
     local rs = torso:FindFirstChild("Right Shoulder")
     local ls = torso:FindFirstChild("Left Shoulder")
     local rh = torso:FindFirstChild("Right Hip")
     local lh = torso:FindFirstChild("Left Hip")
     if not (rs and ls and rh and lh) then return end
 
+    -- Keep R15 Animate disabled & stop any stray R15 tracks while R6 bridge is mounted
+    local animScript = char:FindFirstChild("Animate")
+    if animScript and animScript:IsA("LocalScript") and not animScript.Disabled then
+        animScript:SetAttribute("ROCONS_R6DisabledAnimate", true)
+        animScript.Disabled = true
+    end
+
     local vel = hrp.AssemblyLinearVelocity
     local horizSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
     local state = hum:GetState()
 
-    if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
-        rs.Transform = CFrame.Angles(0, 0, math.rad(165))
-        ls.Transform = CFrame.Angles(0, 0, math.rad(-165))
-        rh.Transform = CFrame.Angles(0, 0, math.rad(-12))
-        lh.Transform = CFrame.Angles(0, 0, math.rad(12))
-    elseif horizSpeed > 0.8 then
-        local freq = math.clamp(horizSpeed * 0.56, 5, 13)
-        local amp = math.clamp(horizSpeed / 16, 0.35, 1.05) * 0.72
+    if hum.Sit or state == Enum.HumanoidStateType.Seated then
+        if rj then rj.Transform = CFrame.new() end
+        if nk then nk.Transform = CFrame.new() end
+        rs.Transform = CFrame.Angles(0, 0, math.rad(18))
+        ls.Transform = CFrame.Angles(0, 0, math.rad(-18))
+        rh.Transform = CFrame.Angles(0, 0, math.rad(90))
+        lh.Transform = CFrame.Angles(0, 0, math.rad(-90))
+    elseif state == Enum.HumanoidStateType.Climbing then
+        local climbSwing = math.sin(ClientR6Time * 11) * 0.85
+        if rj then rj.Transform = CFrame.new() end
+        if nk then nk.Transform = CFrame.Angles(math.rad(-15), 0, 0) end
+        rs.Transform = CFrame.Angles(0, 0, math.rad(145) + climbSwing)
+        ls.Transform = CFrame.Angles(0, 0, math.rad(-145) + climbSwing)
+        rh.Transform = CFrame.Angles(0, 0, -climbSwing * 0.7)
+        lh.Transform = CFrame.Angles(0, 0, -climbSwing * 0.7)
+    elseif state == Enum.HumanoidStateType.Jumping then
+        if rj then rj.Transform = CFrame.new() end
+        if nk then nk.Transform = CFrame.Angles(math.rad(-8), 0, 0) end
+        rs.Transform = CFrame.Angles(0, 0, math.rad(175))
+        ls.Transform = CFrame.Angles(0, 0, math.rad(-175))
+        rh.Transform = CFrame.Angles(0, 0, math.rad(-10))
+        lh.Transform = CFrame.Angles(0, 0, math.rad(10))
+    elseif state == Enum.HumanoidStateType.Freefall then
+        if rj then rj.Transform = CFrame.new() end
+        if nk then nk.Transform = CFrame.Angles(math.rad(6), 0, 0) end
+        rs.Transform = CFrame.Angles(0, 0, math.rad(158))
+        ls.Transform = CFrame.Angles(0, 0, math.rad(-158))
+        rh.Transform = CFrame.Angles(0, 0, math.rad(-14))
+        lh.Transform = CFrame.Angles(0, 0, math.rad(14))
+    elseif horizSpeed > 0.65 then
+        local freq = math.clamp(horizSpeed * 0.62, 6, 14)
+        local amp = math.clamp(horizSpeed / 16, 0.45, 1.15) * 0.85
         local swing = math.sin(ClientR6Time * freq) * amp
+        local bob = math.abs(math.cos(ClientR6Time * freq)) * 0.06
+        if rj then rj.Transform = CFrame.new(0, 0, bob) * CFrame.Angles(math.rad(2), 0, 0) end
+        if nk then nk.Transform = CFrame.new() end
         rs.Transform = CFrame.Angles(0, 0, swing)
         ls.Transform = CFrame.Angles(0, 0, swing)
         rh.Transform = CFrame.Angles(0, 0, -swing)
         lh.Transform = CFrame.Angles(0, 0, -swing)
     else
-        local breath = math.sin(ClientR6Time * 2.2) * 0.045
+        local breath = math.sin(ClientR6Time * 2.1) * 0.055
+        if rj then rj.Transform = CFrame.new() end
+        if nk then nk.Transform = CFrame.new() end
         rs.Transform = CFrame.Angles(0, 0, breath)
-        ls.Transform = CFrame.Angles(0, 0, -breath)
+        ls.Transform = CFrame.Angles(0, 0, breath)
         rh.Transform = CFrame.new()
         lh.Transform = CFrame.new()
     end
+end
+
+local okBind = pcall(function()
+    RunService:BindToRenderStep(ClientR6StepName, Enum.RenderPriority.Character.Value + 5, StepClientR6Locomotion)
 end)
+if not okBind then
+    (RunService.RenderStepped or RunService.Heartbeat):Connect(StepClientR6Locomotion)
+end
 
 -- Auto-reapply Client R6 and Disguise Avatar on Respawn
 LocalPlayer.CharacterAdded:Connect(function(newChar)
