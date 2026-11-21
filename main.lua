@@ -1884,15 +1884,39 @@ local function ApplyRobloxUserAvatar(targetInput)
         return false, "ไม่สามารถโหลดข้อมูลตัวละครของ @" .. resolvedName .. " ได้"
     end
 
-    -- STEP 1: Clean ALL of our own old accessories, clothes, body colors, face & meshes FIRST
+    -- STEP 1: Destroy ALL old cosmetic items on the user's character FIRST before morphing
+    MyMorphed = false
+    if MorphToggleBtn then
+        MorphToggleBtn.Text = "แปลงร่าง: ปิด"
+    end
     for _, child in ipairs(char:GetChildren()) do
         if child:IsA("Accessory") or child:IsA("Hat") or child:IsA("Shirt") or child:IsA("Pants")
             or child:IsA("ShirtGraphic") or child:IsA("BodyColors") or child:IsA("CharacterMesh")
-            or child.Name == "ROCONS_R6Clothing" or child.Name == "ClothFolder" then
-            pcall(function() child:Destroy() end)
+            or child:IsA("Model") or child:IsA("Folder") then
+            if child.Name ~= "Animate" and child.Name ~= "Health" then
+                pcall(function() child:Destroy() end)
+            end
         end
     end
-    task.wait() -- Let Roblox detach old accessory welds cleanly before mounting new ones
+    local myHeadPre = char:FindFirstChild("Head")
+    if myHeadPre then
+        for _, c in ipairs(myHeadPre:GetChildren()) do
+            if c:IsA("Decal") or c:IsA("Texture") or c:IsA("SpecialMesh") or c:IsA("DataModelMesh")
+                or c:IsA("SurfaceAppearance") or c:IsA("FaceControls") then
+                pcall(function() c:Destroy() end)
+            end
+        end
+    end
+    for _, p in ipairs(char:GetChildren()) do
+        if p:IsA("BasePart") then
+            for _, sub in ipairs(p:GetChildren()) do
+                if sub:IsA("SurfaceAppearance") or sub:IsA("WrapTarget") or sub:IsA("CharacterMesh") then
+                    pcall(function() sub:Destroy() end)
+                end
+            end
+        end
+    end
+    task.wait() -- Let Roblox detach all old accessory welds cleanly before mounting new ones
 
     if ForceClientR6Enabled then
         EnsureR6Bridge(char)
@@ -1907,20 +1931,22 @@ local function ApplyRobloxUserAvatar(targetInput)
         end
     end
 
-    -- STEP 3: Copy Head color & face decal
+    -- STEP 3: Copy Head color, head mesh, SurfaceAppearance & face decal from target avatar
     local myHead = char:FindFirstChild("Head")
     local refHead = refModel:FindFirstChild("Head")
     if myHead and refHead then
         myHead.Color = refHead.Color
-        for _, c in ipairs(myHead:GetChildren()) do
-            if c:IsA("Decal") and (c.Name:lower() == "face" or c.Face == Enum.NormalId.Front) then
-                c:Destroy()
+        for _, c in ipairs(refHead:GetChildren()) do
+            if c:IsA("Decal") or c:IsA("Texture") or c:IsA("SpecialMesh") or c:IsA("DataModelMesh")
+                or c:IsA("SurfaceAppearance") or c:IsA("FaceControls") then
+                local clone = c:Clone()
+                clone.Parent = myHead
             end
         end
-        local refFace = refHead:FindFirstChild("face") or refHead:FindFirstChildOfClass("Decal")
-        if refFace then
-            local cf = refFace:Clone()
-            cf.Parent = myHead
+        if myHead:IsA("MeshPart") and refHead:IsA("MeshPart") then
+            pcall(function()
+                myHead.TextureID = refHead.TextureID
+            end)
         end
     end
 
