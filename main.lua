@@ -2167,11 +2167,23 @@ end
 
 local function UnfreezeCharacter(char)
     if not char then return end
+    local animScript = char:FindFirstChild("Animate")
+    if animScript and animScript:IsA("LocalScript") then
+        animScript.Disabled = false
+    end
+    local collideRestore = {
+        Head = true, Torso = true, UpperTorso = true, LowerTorso = true, HumanoidRootPart = true,
+    }
     for _, d in ipairs(char:GetDescendants()) do
         if d:IsA("BasePart") then
             d.Anchored = false
             d.AssemblyLinearVelocity = Vector3.zero
             d.AssemblyAngularVelocity = Vector3.zero
+            if collideRestore[d.Name] and not d:GetAttribute("ROCONS_R6BridgePart") then
+                d.CanCollide = true
+            end
+        elseif d:IsA("Motor6D") then
+            d.Transform = CFrame.new()
         end
     end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -2288,6 +2300,7 @@ end
 
 local function RemoveMorph(char)
     if not char then return end
+    UVMorph.Remove(char)
     local m = char:FindFirstChild("Morph")
     if m then m:Destroy() end
     local cf = char:FindFirstChild("ClothFolder")
@@ -2602,7 +2615,14 @@ local function StopNonCarrierAnimatorTracks(char)
     end
 end
 
+local ActiveKeyframeTrackByChar = setmetatable({}, { __mode = "k" })
+
 local function PlayKeyframeAnim(char, kfSeq, speed)
+    if char and ActiveKeyframeTrackByChar[char] then
+        local prevTrack = ActiveKeyframeTrackByChar[char]
+        ActiveKeyframeTrackByChar[char] = nil
+        pcall(function() prevTrack.Stop() end)
+    end
     local track = {
         Speed = math.clamp(tonumber(speed) or 1, 0.05, 8),
         Stop = function() end,
@@ -2612,7 +2632,6 @@ local function PlayKeyframeAnim(char, kfSeq, speed)
     if not compiled then return track end
 
     local animScript = char:FindFirstChild("Animate")
-    local prevDisabled = animScript and animScript.Disabled or false
     StopNonCarrierAnimatorTracks(char)
 
     local running = true
@@ -2626,19 +2645,23 @@ local function PlayKeyframeAnim(char, kfSeq, speed)
             end
         end
         if animScript and animScript.Parent then
-            animScript.Disabled = prevDisabled
+            animScript.Disabled = false
         end
     end
 
     function track.Stop()
         if not running then return end
         running = false
+        if ActiveKeyframeTrackByChar[char] == track then
+            ActiveKeyframeTrackByChar[char] = nil
+        end
         if conn then
             conn:Disconnect()
             conn = nil
         end
         resetMotors()
     end
+    ActiveKeyframeTrackByChar[char] = track
 
     local styleMap = {
         Linear  = Enum.EasingStyle.Linear,
@@ -3045,10 +3068,21 @@ local MyAge          = "18"
 local MyStatus       = "Idle"     -- "Idle" | "Synced" | "Emoting"
 local MySyncPartner  = ""         -- player Name or "[BOT]"
 local MyRole         = "D"        -- "D" | "S"
+local PreferredRole  = "AUTO"     -- "AUTO" | "D" | "S"
 local MyCurrentAnim  = ""
 local MyAnimSpeed    = 1
 local MyMorphed      = false
 local IgnoreInvites  = false
+local SyncGuards     = { BreakAt = {}, AnimChangeAt = 0 }
+
+local function ResolveMyRole(partnerGender)
+    if PreferredRole == "D" or PreferredRole == "S" then
+        return PreferredRole
+    end
+    if MyGender == "F" then return "S" end
+    if partnerGender == "F" then return "D" end
+    return "D"
+end
 
 local MyAnimTrack, PartnerAnimTrack, EmoteAnimTrack
 
@@ -3344,8 +3378,8 @@ local function StartSyncSession(partnerName, myRole)
     end
 
     MyMorphed = true
-    if MorphToggleBtn then
-        MorphToggleBtn.Text = "แปลงร่าง: เปิด"
+    if RefreshMorphToggleVisual then
+        RefreshMorphToggleVisual()
     end
     if MorphsFolder and myChar then
         local tpl = MorphsFolder:FindFirstChild(MyGender)
@@ -3370,59 +3404,74 @@ local function StartSyncSession(partnerName, myRole)
     end)
 end
 
-local function BreakSyncSession(silent)
-    if MyStatus == "Idle" and not EmoteAnimTrack then return end
+local function BreakSyncSession(silent, force)
+    if not force and MyStatus == "Idle" and not EmoteAnimTrack and not MyAnimTrack and not PartnerAnimTrack then return end
     if MyStatus == "Emoting" then
         StopEmote()
         if UpdateHeaderStatusBadge then UpdateHeaderStatusBadge() end
-        return
+        if not force then return end
     end
 
     local oldPartner = MySyncPartner
+    if oldPartner ~= "" and oldPartner ~= "[BOT]" then
+        SyncGuards.BreakAt[oldPartner] = os.clock()
+    end
     MyStatus = "Idle"
-    MyRole = "D"
+    MyRole = ResolveMyRole()
     MyCurrentAnim = ""
     SyncMasterCFrame = nil
     SyncAnchorReady = false
 
-    if MyAnimTrack then MyAnimTrack.Stop(); MyAnimTrack = nil end
-    if PartnerAnimTrack then PartnerAnimTrack.Stop(); PartnerAnimTrack = nil end
+    if MyAnimTrack then pcall(function() MyAnimTrack.Stop() end); MyAnimTrack = nil end
+    if PartnerAnimTrack then pcall(function() PartnerAnimTrack.Stop() end); PartnerAnimTrack = nil end
+    if EmoteAnimTrack then pcall(function() EmoteAnimTrack.Stop() end); EmoteAnimTrack = nil end
 
     if LocalPlayer.Character then
+        if ActiveKeyframeTrackByChar[LocalPlayer.Character] then
+            pcall(function() ActiveKeyframeTrackByChar[LocalPlayer.Character].Stop() end)
+        end
         ResetCharacterAfterSync(LocalPlayer.Character, false)
     end
 
     if oldPartner ~= "" and oldPartner ~= "[BOT]" then
         if RemoteTracks[oldPartner] and RemoteTracks[oldPartner].Track then
-            RemoteTracks[oldPartner].Track.Stop()
+            pcall(function() RemoteTracks[oldPartner].Track.Stop() end)
         end
         RemoteTracks[oldPartner] = nil
         local p = Players:FindFirstChild(oldPartner)
         if p and p.Character then
+            if ActiveKeyframeTrackByChar[p.Character] then
+                pcall(function() ActiveKeyframeTrackByChar[p.Character].Stop() end)
+            end
             ResetCharacterAfterSync(p.Character, false)
         end
-    elseif oldPartner == "[BOT]" then
+    end
+
+    do
         local botName = "ROCONS_BOT_" .. LocalPlayer.Name
         if RemoteTracks[botName] and RemoteTracks[botName].Track then
-            RemoteTracks[botName].Track.Stop()
+            pcall(function() RemoteTracks[botName].Track.Stop() end)
         end
         RemoteTracks[botName] = nil
         local botObj = Workspace:FindFirstChild(botName)
-        if botObj then botObj:Destroy() end
+        if botObj then
+            if ActiveKeyframeTrackByChar[botObj] then
+                pcall(function() ActiveKeyframeTrackByChar[botObj].Stop() end)
+            end
+            botObj:Destroy()
+        end
     end
 
     MyMorphed = false
     MyAnimSpeed = 1
-    MyController = LocalPlayer.Name
     MySyncPartner = ""
-    PendingInviteFrom = ""
-    PendingInviteGender = ""
 
-    if MorphToggleBtn then
-        MorphToggleBtn.Text = "แปลงร่าง: ปิด"
+    if RefreshMorphToggleVisual then
+        RefreshMorphToggleVisual()
     end
     if not silent then
         SyncBreakSig:Fire()
+        BotUpdateSig:Fire({ Active = false })
         PlayerUpdateSig:Fire({
             Status = "Idle",
             SyncPartner = "",
@@ -3435,8 +3484,15 @@ local function BreakSyncSession(silent)
     if UpdateHeaderStatusBadge then UpdateHeaderStatusBadge() end
 end
 
+local function FindAnimSequenceForRole(roleFolder, animName, suffix)
+    if not roleFolder or not animName or animName == "" then return nil end
+    return roleFolder:FindFirstChild(animName .. suffix)
+        or roleFolder:FindFirstChild(animName)
+        or roleFolder:FindFirstChild(animName .. (suffix == "F" and "M" or "F"))
+end
+
 local function PlaySyncAnimation(animName)
-    if not AnimFolder then return end
+    if not AnimFolder or not animName or animName == "" then return end
     local myRoleFolder = AnimFolder:FindFirstChild(MyRole)
     local partnerRole = (MyRole == "D") and "S" or "D"
     local partnerRoleFolder = AnimFolder:FindFirstChild(partnerRole)
@@ -3444,11 +3500,12 @@ local function PlaySyncAnimation(animName)
 
     local mySuffix = (MyRole == "S") and "F" or "M"
     local partnerSuffix = (partnerRole == "S") and "F" or "M"
-    local mySeq = myRoleFolder:FindFirstChild(animName .. mySuffix)
-    local partnerSeq = partnerRoleFolder:FindFirstChild(animName .. partnerSuffix)
+    local mySeq = FindAnimSequenceForRole(myRoleFolder, animName, mySuffix)
+    local partnerSeq = FindAnimSequenceForRole(partnerRoleFolder, animName, partnerSuffix)
 
-    if MyAnimTrack then MyAnimTrack.Stop(); MyAnimTrack = nil end
-    if PartnerAnimTrack then PartnerAnimTrack.Stop(); PartnerAnimTrack = nil end
+    if MyAnimTrack then pcall(function() MyAnimTrack.Stop() end); MyAnimTrack = nil end
+    if PartnerAnimTrack then pcall(function() PartnerAnimTrack.Stop() end); PartnerAnimTrack = nil end
+    StopAllSounds()
 
     if mySeq and LocalPlayer.Character then
         MyAnimTrack = PlayKeyframeAnim(LocalPlayer.Character, mySeq, MyAnimSpeed)
@@ -3469,12 +3526,38 @@ local function PlaySyncAnimation(animName)
             PartnerAnimTrack = PlayKeyframeAnim(botObj, partnerSeq, MyAnimSpeed)
         end
     elseif MySyncPartner ~= "" then
+        if RemoteTracks[MySyncPartner] and RemoteTracks[MySyncPartner].Track then
+            pcall(function() RemoteTracks[MySyncPartner].Track.Stop() end)
+        end
+        RemoteTracks[MySyncPartner] = nil
         local partnerPlr = Players:FindFirstChild(MySyncPartner)
         if partnerPlr and partnerPlr.Character and partnerSeq then
             PartnerAnimTrack = PlayKeyframeAnim(partnerPlr.Character, partnerSeq, MyAnimSpeed)
         end
     end
     if UpdateHeaderStatusBadge then UpdateHeaderStatusBadge() end
+end
+
+local function SwitchActiveSyncRole(newRolePref)
+    PreferredRole = newRolePref
+    local resolved = ResolveMyRole()
+    if MyStatus == "Synced" then
+        MyRole = resolved
+        if MySyncPartner == "[BOT]" then
+            local opp = (MyRole == "D") and "S" or "D"
+            if SelectedBotRole ~= opp then
+                SelectedBotRole = opp
+                if BotRoleSeg then BotRoleSeg.Set(opp) end
+            end
+        end
+        PlayerUpdateSig:Fire({ Role = MyRole })
+        if BroadcastMyP2PState then BroadcastMyP2PState() end
+        if MyCurrentAnim ~= "" then
+            SyncGuards.AnimChangeAt = os.clock()
+            PlaySyncAnimation(MyCurrentAnim)
+        end
+        if UpdateHeaderStatusBadge then UpdateHeaderStatusBadge() end
+    end
 end
 
 -- ============================================================================
@@ -4074,6 +4157,21 @@ SelectTab("Players")
 -- ============================================================================
 
 -- [A] แท็บผู้เล่น (Players Tab)
+local PlayersRoleSeg, SettingsRoleSeg
+do
+UI.Section(PlayersTab, "บทบาทของคุณตอนซิงค์ (รุก / รับ)", -14)
+PlayersRoleSeg = UI.Segmented(PlayersTab, {
+    { Key = "AUTO", Text = "อัตโนมัติ" },
+    { Key = "D",    Text = "ฝ่ายรุก (D)" },
+    { Key = "S",    Text = "ฝ่ายรับ (S)" },
+}, PreferredRole, function(val)
+    SwitchActiveSyncRole(val)
+    if SettingsRoleSeg then SettingsRoleSeg.Set(val) end
+    local roleTxt = (val == "D" and "ฝ่ายรุก (D)") or (val == "S" and "ฝ่ายรับ (S)") or "อัตโนมัติตามเพศ"
+    ShowNotification("ตั้งบทบาทของคุณเป็น: " .. roleTxt, 2, "success")
+end, -13)
+end
+
 local RefreshListBtn = UI.Button(PlayersTab, {
     Name = "RefreshListBtn",
     Text = "รีเฟรชรายชื่อผู้เล่น",
@@ -4116,12 +4214,12 @@ local function PopulatePlayersTab(db)
                     ShowNotification("คุณกำลังซิงค์อยู่แล้ว! กรุณากดหยุดซิงค์ก่อน", 2, "warn")
                     return
                 end
-                local myRole = (MyGender == "F") and "S" or "D"
-                MyController = LocalPlayer.Name
+                local myRole = ResolveMyRole(info.Gender)
+                SyncGuards.BreakAt[plrName] = nil
                 SyncRequestSig:Fire(plrName, MyGender)
                 StartSyncSession(plrName, myRole)
                 UpdateHeaderStatusBadge()
-                ShowNotification("ซิงค์และล็อกตัวละครกับ " .. disp .. " สำเร็จ!", 3, "success")
+                ShowNotification("ซิงค์และล็อกตัวละครกับ " .. disp .. " (" .. (myRole == "D" and "รุก" or "รับ") .. ") สำเร็จ!", 3, "success")
             end)
         end
     end
@@ -4173,12 +4271,6 @@ BotRoleSeg = UI.Segmented(BotsTab, {
     { Key = "S", Text = "ฝ่ายรับ (S)" },
     { Key = "D", Text = "ฝ่ายรุก (D)" },
 }, "S", function(val)
-    if MyGender == "F" and val == "S" then
-        SelectedBotRole = "D"
-        BotRoleSeg.Set("D")
-        ShowNotification("โปรไฟล์ผู้หญิงจะใช้บอทเป็นฝ่ายรุก (D) เสมอ", 3, "warn")
-        return
-    end
     SelectedBotRole = val
 end, nextBotOrder())
 
@@ -4283,12 +4375,8 @@ local StopSyncBtn = UI.Button(AnimsTab, {
     LayoutOrder = -4,
 })
 StopSyncBtn.MouseButton1Click:Connect(function()
-    if MyStatus == "Synced" or MyStatus == "Emoting" then
-        BreakSyncSession(false)
-        ShowNotification("หยุดการซิงค์แล้ว", 2, "info")
-    else
-        ShowNotification("คุณยังไม่ได้ซิงค์กับใคร", 2, "warn")
-    end
+    BreakSyncSession(false, true)
+    ShowNotification("หยุดการซิงค์และรีเซ็ตตัวละครแล้ว", 2, "info")
 end)
 end
 
@@ -4326,6 +4414,7 @@ local function PopulateAnimsTab()
                     return
                 end
                 MyCurrentAnim = cleanName
+                SyncGuards.AnimChangeAt = os.clock()
                 PlaySyncAnimation(cleanName)
                 AnimChangeSig:Fire(cleanName)
                 PlayerUpdateSig:Fire({ CurrentAnim = cleanName })
@@ -4580,7 +4669,19 @@ local function PopulateSettingsTab()
         ApplySelectedGender(newGender, false)
     end, 2)
 
-    UI.Section(SettingsTab, "แปลงร่างเป็น R6 (สำหรับแมพที่ไม่รองรับ R6)", 3)
+    UI.Section(SettingsTab, "บทบาทของคุณ (รุก / รับ)", 2)
+    SettingsRoleSeg = UI.Segmented(SettingsTab, {
+        { Key = "AUTO", Text = "อัตโนมัติ" },
+        { Key = "D",    Text = "ฝ่ายรุก (D)" },
+        { Key = "S",    Text = "ฝ่ายรับ (S)" },
+    }, PreferredRole, function(val)
+        SwitchActiveSyncRole(val)
+        if PlayersRoleSeg then PlayersRoleSeg.Set(val) end
+        local roleTxt = (val == "D" and "ฝ่ายรุก (D)") or (val == "S" and "ฝ่ายรับ (S)") or "อัตโนมัติตามเพศ"
+        ShowNotification("ตั้งบทบาทของคุณเป็น: " .. roleTxt, 2, "success")
+    end, 3)
+
+    UI.Section(SettingsTab, "แปลงร่างเป็น R6 (สำหรับแมพที่ไม่รองรับ R6)", 4)
     UI.Toggle(SettingsTab, "แปลงร่างเป็น R6 (ฝั่ง Client)", "แปลงตัวละคร R15 เป็น R6 พร้อมท่าเดิน/กระโดดเฉพาะฝั่ง Client", ForceClientR6Enabled, function(v)
         ForceClientR6Enabled = v
         local char = LocalPlayer.Character
@@ -5332,14 +5433,16 @@ local function ReconcilePlayerState(key, payload)
         local existingBot = Workspace:FindFirstChild(botKey)
 
         -- 1. If this script user pressed Sync on us, lock BOTH characters into Sync immediately!
-        local wantsSyncWithMe = (payload.Request == LocalPlayer.Name)
+        local recentlyBroke = (os.clock() - (SyncGuards.BreakAt[key] or 0)) < 3.5
+        local wantsSyncWithMe = (not recentlyBroke) and (
+            (payload.Request == LocalPlayer.Name)
             or (payload.Status == "Synced" and payload.SyncPartner == LocalPlayer.Name)
+        )
 
         if wantsSyncWithMe and not IgnoreInvites then
             local theirRole = (payload.Role == "S") and "S" or "D"
             local myOppositeRole = (theirRole == "D") and "S" or "D"
             if MyStatus ~= "Synced" or MySyncPartner ~= key then
-                MyController = key
                 if payload.Request == LocalPlayer.Name then
                     SyncAcceptSig:Fire(key, myOppositeRole, theirRole)
                 end
@@ -5389,7 +5492,7 @@ local function ReconcilePlayerState(key, payload)
                 if MyAnimTrack then MyAnimTrack.Speed = MyAnimSpeed end
                 if PartnerAnimTrack then PartnerAnimTrack.Speed = MyAnimSpeed end
             end
-            if payload.CurrentAnim and payload.CurrentAnim ~= "" and payload.CurrentAnim ~= MyCurrentAnim then
+            if payload.CurrentAnim and payload.CurrentAnim ~= "" and payload.CurrentAnim ~= MyCurrentAnim and (os.clock() - SyncGuards.AnimChangeAt) > 2.5 then
                 MyCurrentAnim = payload.CurrentAnim
                 PlaySyncAnimation(MyCurrentAnim)
             end
@@ -5463,7 +5566,7 @@ local function ReconcilePlayerState(key, payload)
             local reqPlr = Players:FindFirstChild(payload.Request)
             if reqPlr then
                 local reqGender = payload.RequesterGender or "M"
-                local myRole = (MyGender == "F" and "S") or (reqGender == "F" and "D") or "S"
+                local myRole = ResolveMyRole(reqGender)
                 local theirRole = (myRole == "S") and "D" or "S"
                 SyncAcceptSig:Fire(payload.Request, myRole, theirRole)
                 StartSyncSession(payload.Request, myRole)
@@ -5482,7 +5585,7 @@ local function ReconcilePlayerState(key, payload)
             if MyAnimTrack then MyAnimTrack.Speed = MyAnimSpeed end
             if PartnerAnimTrack then PartnerAnimTrack.Speed = MyAnimSpeed end
         end
-        if payload.CurrentAnim and payload.CurrentAnim ~= "" and payload.CurrentAnim ~= MyCurrentAnim then
+        if payload.CurrentAnim and payload.CurrentAnim ~= "" and payload.CurrentAnim ~= MyCurrentAnim and (os.clock() - SyncGuards.AnimChangeAt) > 2.5 then
             MyCurrentAnim = payload.CurrentAnim
             PlaySyncAnimation(MyCurrentAnim)
         end
